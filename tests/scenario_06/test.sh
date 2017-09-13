@@ -10,6 +10,7 @@ server_start 0
 nic_add 0 1 42 sg-1
 nic_add 0 2 42 sg-1
 sg_rule_add_all_open 0 sg-1
+sg_rule_add_all_open 0 sg-1
 qemus_start 1 2
 ssh_ping 1 2
 ssh_ping 2 1
