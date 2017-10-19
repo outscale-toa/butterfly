@@ -10,6 +10,7 @@ server_start 1
 nic_add 0 1 42 sg-1
 nic_add 1 2 42 sg-1
 sg_rule_add_all_open 0 sg-1
+sg_rule_add_all_open 0 sg-1
 sg_rule_add_all_open 1 sg-1
 qemu_start_async 1
 qemu_start_async 2
