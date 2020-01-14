@@ -35,6 +35,7 @@ extern "C" {
 #include "api/server/graph.h"
 #include "api/common/crypto.h"
 #include "api/common/vec.h"
+#include <iostream>
 
 namespace {
 void PgfakeDestroy(struct pg_brick *) {}
@@ -239,7 +240,7 @@ void rx_snd_callback(struct pg_brick *b, pg_packet_t **burst,
         if (!bsnd->min_time || t < bsnd->min_time)
             bsnd->min_time = t;
         bsnd->not_droped += 1;
-    }
+   }
 }
 
 
@@ -355,6 +356,11 @@ bool Graph::Start(std::string dpdk_args) {
         // Try to create a pcap interface instead
         nic_ = BrickShrPtr(pg_tap_new("tap", NULL, &app::pg_error),
                      pg_brick_destroy);
+        if (pg_error_is_set(&app::pg_error)) {
+	    std::cout <<"=== Dans pg_tap_new ERROR SET === \n";
+            PG_ERROR_(app::pg_error);
+	}
+
         if (nic_.get() == NULL) {
             LOG_ERROR_("cannot create tap interface");
             PG_ERROR_(app::pg_error);
@@ -394,6 +400,11 @@ bool Graph::Start(std::string dpdk_args) {
                                PG_PRINT_FLAG_PCAP | PG_PRINT_FLAG_CLOSE_FILE,
                                NULL, &app::pg_error),
                     pg_brick_destroy);
+        if (pg_error_is_set(&app::pg_error)) {
+           std::cout <<"=== Dans pg_print_new SET === \n";
+           PG_ERROR_(app::pg_error);
+	}
+
         if (sniffer_.get() == NULL) {
             PG_ERROR_(app::pg_error);
             return false;
@@ -406,6 +417,11 @@ bool Graph::Start(std::string dpdk_args) {
                                               mac, PG_VTEP_DST_PORT,
                                               PG_VTEP_ALL_OPTI, &app::pg_error),
                         pg_brick_destroy);
+    if (pg_error_is_set(&app::pg_error)) {
+        std::cout <<"=== Dans pg_vtep_new_by_string ERROR SET === \n";
+        PG_ERROR_(app::pg_error);
+    }
+
     isVtep6_ = !strcmp(pg_brick_type(vtep_.get()), "vtep6");
     if (vtep_.get() == NULL) {
         PG_ERROR_(app::pg_error);
@@ -482,7 +498,7 @@ void *Graph::Poller(void *graph) {
     uint16_t pkts_count;
     struct pg_brick *nic = g->nic_.get();
     uint32_t size = 0;
-    struct pg_error *poll_err;
+    struct pg_error *poll_err = NULL;
 
     g_async_queue_ref(g->queue_);
 
@@ -507,13 +523,21 @@ void *Graph::Poller(void *graph) {
         }
 
         /* Poll all pollable vhosts. */
-        if (unlikely(pg_brick_poll(nic, &pkts_count, &poll_err) < 0)) {
+
+	//int OK = unlikely(pg_brick_poll(nic, &pkts_count, &poll_err));
+	//      std::cout <<"\n==  pg_brick_poll DANS Poller "<< OK << std::endl;
+      if (unlikely(pg_brick_poll(nic, &pkts_count, &poll_err) < 0)) {
+	    std::cout <<"== pg_brick_poll DANS Poller "<< poll_err->message <<"\n\n"<< std::endl;
             PG_ERROR_(poll_err);
         }
 
         for (uint32_t v = 0; v < size; v++) {
-            if (unlikely(pg_brick_poll(list->pollables[v],
+          //std::cout <<"\n==  pg_brick_poll DANS Poller size= "<< size << std::endl;
+	  //	  OK = unlikely(pg_brick_poll(list->pollables[v], &pkts_count, &poll_err));
+          //std::cout <<"\n==  pg_brick_poll DANS Poller for  "<< OK << std::endl;
+	  if (unlikely(pg_brick_poll(list->pollables[v],
                                        &pkts_count, &poll_err) < 0)) {
+	        std::cout <<"== pg_brick_poll DANS for Poller "<< poll_err->message <<"\n\n"<< std::endl;
                 PG_ERROR_(poll_err);
             }
         }
@@ -558,6 +582,10 @@ bool Graph::PollerUpdate(struct RpcQueue **list) {
     struct RpcQueue *a;
     struct RpcQueue *tmp;
 
+    if (pg_error_is_set(&app::pg_error)) {
+      std::cout <<"=== Entrer PollerUpdate === \n";
+      PG_ERROR_(app::pg_error);
+    }
     // Unqueue calls
     a = (struct RpcQueue *) g_async_queue_try_pop(queue_);
     while (a != NULL) {
@@ -566,6 +594,10 @@ bool Graph::PollerUpdate(struct RpcQueue **list) {
                 g_free(a);
                 return false;
             case VHOST_START:
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== Dans VHOST_START === \n";
+                    PG_ERROR_(app::pg_error);
+		}
                 if (pg_vhost_start(app::config.socket_folder.c_str(),
                                    &app::pg_error) < 0) {
                     PG_ERROR_(app::pg_error);
@@ -575,21 +607,39 @@ bool Graph::PollerUpdate(struct RpcQueue **list) {
                 pg_vhost_stop();
                 break;
             case LINK:
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== Dans LINK === \n";
+                    PG_ERROR_(app::pg_error);
+		}
                 if (pg_brick_link(a->link.w, a->link.e, &app::pg_error) < 0)
                     PG_ERROR_(app::pg_error);
                 break;
             case UNLINK:
                 pg_brick_unlink(a->unlink.b, &app::pg_error);
-                if (pg_error_is_set(&app::pg_error))
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== Dans UNL_INK === \n";
                     PG_ERROR_(app::pg_error);
+		}
                 break;
             case UNLINK_EDGE:
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== AVANT UNL_INK_EDGE=== \n";
+                    PG_ERROR_(app::pg_error);
+		}
+ 
                 pg_brick_unlink_edge(a->unlink_edge.w, a->unlink_edge.e,
                                     &app::pg_error);
-                if (pg_error_is_set(&app::pg_error))
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== Dans UNL_INK_EDGE ERROR SET === \n";
                     PG_ERROR_(app::pg_error);
+		}
                 break;
             case ADD_VNI:
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== AVANT ADD_VNI=== \n";
+                    PG_ERROR_(app::pg_error);
+		}
+
                 if (isVtep6_) {
                     if (pg_vtep_add_vni(a->add_vni.vtep,
                                         a->add_vni.neighbor,
@@ -603,21 +653,38 @@ bool Graph::PollerUpdate(struct RpcQueue **list) {
                                         a->add_vni.vni,
                                         a->add_vni.multicast_ip4,
                                         &app::pg_error) < 0)
-                        PG_ERROR_(app::pg_error);
+
+                   if (pg_error_is_set(&app::pg_error)) {
+		       std::cout <<"=== Dans ADD_VNI ERROR SET === \n";
+                       PG_ERROR_(app::pg_error);
+		   }
+		    // PG_ERROR_(app::pg_error);
                 }
                 break;
             case UPDATE_POLL:
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== AVANT UPDATE_POLL=== \n";
+                    PG_ERROR_(app::pg_error);
+		}
                 // Swap with the old list
                 tmp = a;
                 a = *list;
                 *list = tmp;
                 break;
             case FW_RELOAD:
+                if (pg_error_is_set(&app::pg_error)) {
+		    std::cout <<"=== AVANT FW_RELOAD=== \n";
+                    PG_ERROR_(app::pg_error);
+		}
                 if (pg_firewall_reload(a->fw_reload.firewall,
                                        &app::pg_error) < 0)
                     PG_ERROR_(app::pg_error);
                 break;
             case FW_NEW:
+	        if (pg_error_is_set(&app::pg_error)) {
+		  std::cout <<" == Avant creation FW \n" << std::endl;
+                    PG_ERROR_(app::pg_error);
+	        }
                 *(a->fw_new.result) = pg_firewall_new(a->fw_new.name,
                                                       a->fw_new.flags,
                                                       &app::pg_error);
@@ -670,6 +737,7 @@ bool Graph::NicAdd(app::Nic *nic_) {
     gn.enable = true;
     gn.id = nic.id;
     name = "firewall-" + gn.id;
+    std::cout <<"===Firewall1 name = "<< name << std::endl;
     fw_new(name.c_str(), 1, 1, PG_NO_CONN_WORKER, &tmp_fw);
     WaitEmptyQueue();
     if (tmp_fw == NULL) {
@@ -681,6 +749,7 @@ bool Graph::NicAdd(app::Nic *nic_) {
     name = "antispoof-" + gn.id;
     struct ether_addr mac;
     nic.mac.Bytes(mac.ether_addr_octet);
+    std::cout <<"===Antispoof name = "<< name << std::endl;
     gn.antispoof = BrickShrPtr(pg_antispoof_new(name.c_str(), PG_WEST_SIDE,
                                                 &mac, &app::pg_error),
                          pg_brick_destroy);
@@ -823,11 +892,16 @@ bool Graph::NicAdd(app::Nic *nic_) {
         }
 
         BrickShrPtr head1 = vni.nics.begin()->second.head;
-        if (pg_brick_unlink_edge(vtep_.get(), head1.get(),
+	std::cout <<"=== DEBUT DES ERROR== \n" << std::endl;
+	std::cout <<"=== Pointer ERROR = "<< &app::pg_error <<" == \n" << std::endl;
+
+        unlink_edge(vtep_, head1);
+	/*        if (pg_brick_unlink_edge(vtep_.get(), head1.get(),
                                  &app::pg_error) < 0) {
             PG_ERROR_(app::pg_error);
             return false;
-        }
+	    }*/
+
         link(vtep_, vni.sw);
         add_vni(vtep_, vni.sw, nic.vni);
         link(vni.sw, head1);

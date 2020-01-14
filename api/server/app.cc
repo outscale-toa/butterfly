@@ -389,7 +389,7 @@ bool LoadConfigFile(std::string config_path) {
     return true;
 }
 
-void SegvHandler(int sig) {
+void SegvHandler(int) {
   void *array[32];
   size_t size;
 
